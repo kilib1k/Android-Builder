@@ -1,0 +1,47 @@
+name: Build Custom ROM
+
+on:
+  workflow_dispatch: # Это создаст ту самую заветную кнопку запуска вручную
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Freeing up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /android-tools
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo apt-get clean
+        df -h
+
+    - name: Set up Build Environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagenagick lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev
+
+    - name: Install Repo Tool
+      run: |
+        mkdir -p ~/bin
+        curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+        chmod a+x ~/bin/repo
+        sudo ln -sf ~/bin/repo /usr/bin/repo
+
+    - name: Run Buildbot Script
+      run: |
+        # Переходим в папку System, делаем скрипт исполняемым и запускаем
+        cd System
+        chmod +x build.sh
+        bash build.sh
+
+    - name: Upload Finished ROM
+      uses: actions/upload-artifact@v4
+      with:
+        name: LineageOS-Blossom
+        path: System/LineageOS/out/target/product/blossom/*.zip
