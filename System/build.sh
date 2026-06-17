@@ -17,18 +17,19 @@ ROOT=$(cd $(dirname $0);pwd)
 # BL=$PWD/treble_build_pe
 OUTPUTS=$ROOT/builds
 
-# 初始化仓库
+# 初始化仓库 (Инициализация репозитория LineageOS)
 initRepos() {
     if [ ! -d $ROOT/LineageOS ]; then
         mkdir -p $ROOT/LineageOS
         cd $ROOT/LineageOS
         echo "--> Initializing LineageOS Repo"
-        repo init -u https://github.com/LineageOS/android -b lineage-20.0 --git-lfs
+        # ДОБАВЛЕНО --depth=1: экономит кучу места на диске GitHub Actions
+        repo init -u https://github.com/LineageOS/android -b lineage-20.0 --depth=1 --git-lfs
         echo
     fi
 }
 
-# 仓库应用DogDay补丁
+# 仓库应用DogDay补丁 (Пропускаем патчи автора)
 applyManifestsPatches() {
     if [ -d $ROOT/LineageOS ]; then
         cd $ROOT/LineageOS/.repo/manifests
@@ -37,18 +38,30 @@ applyManifestsPatches() {
         git reset --hard origin/lineage-20.0
         echo
 
-        echo "--> Patching Repo Manifests"
-        git am $ROOT/Patches/LineageOS/manifests/*.patch
+        # Эту строчку комментируем, чтобы чужие патчи не сломали сборку blossom
+        # git am $ROOT/Patches/LineageOS/manifests/*.patch
         echo
     fi
 }
 
-# 同步仓库内容
+# 同步仓库内容 (Скачивание деревьев blossom и синхронизация)
 syncRepos() {
     if [ -d $ROOT/LineageOS ]; then
         cd $ROOT/LineageOS
+        
+        echo "--> Cloning trees for 64-bit build (blossom)"
+        # Клонируем Device Tree
+        git clone https://github.com/xiaomi-blossom-dev/device_xiaomi_blossom.git -b lineage-20 device/xiaomi/blossom
+        
+        # Клонируем Vendor Tree (убедись, что имя репозитория совпадает у автора)
+        git clone https://github.com/xiaomi-blossom-dev/vendor_xiaomi_blossom.git -b lineage-20 vendor/xiaomi/blossom
+        
+        # Клонируем Kernel Tree (ядро mt6765)
+        git clone https://github.com/xiaomi-blossom-dev/kernel_xiaomi_mt6765.git -b lineage-20 kernel/xiaomi/blossom
+
         echo "--> Syncing repos"
-        repo sync -c --force-sync --no-clone-bundle --no-tags -j16
+        # ДОБАВЛЕНО --depth=1: скачивает только актуальные файлы без истории, чтобы уложиться в лимит диска
+        repo sync -c --force-sync --no-clone-bundle --no-tags --depth=1 -j16
         echo
     fi
 }
@@ -95,15 +108,16 @@ setupEnv() {
     echo
 }
 
-# 开始编译
 build() {
-    echo "--> Building DogDayAndroid"
+    echo "--> Building LineageOS 20 for blossom (Redmi 9C NFC 64-bit)"
     export RELEASE_TYPE=RELEASE
-    lunch lineage_thyme-userdebug
+    
+    # Конфигурация из твоего нового дерева
+    lunch lineage_blossom-userdebug   
+    
     croot
     mka clobber
-    mka bacon -j$(( $(nproc --all) / 2 )) 2>&1 | tee build.log
-    # mv $OUT/system.img $BD/system-treble_arm64_bvN-slim.img
+    mka bacon -j$(nproc --all) 2>&1 | tee build.log
     echo
 }
 
@@ -144,14 +158,11 @@ build() {
 START=$(date +%s)
 
 initRepos
-applyManifestsPatches
+# applyManifestsPatches
 syncRepos
-applyPatches
+# applyPatches
 setupEnv
 build
-
-# generatePackages
-# generateOta
 
 END=$(date +%s)
 ELAPSEDM=$(($(($END-$START))/60))
